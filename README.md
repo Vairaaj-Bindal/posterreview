@@ -52,4 +52,27 @@ app/          # (later) web app
 
 ## Status
 
-Phase 1: data acquisition + OpenReview linkage — in progress.
+- **Phase 1 ✓** — data acquisition + OpenReview linkage (1,558 ICLR'24 posters
+  → reviewer ratings/tiers) + P2PEval / Paper2Poster assets. (`docs/phase1_data_report.md`)
+- **Phase 2 ✓** — deterministic design-metrics engine (font sizes, contrast,
+  coverage, columns, palette), validated on real posters. (`docs/phase2_metrics_engine.md`)
+- **Phase 2b ✓** — OCR fallback (RapidOCR) for image-flattened poster PDFs.
+- **Phase 3 ✓** — retrieval-grounded + metrics-grounded reviewer (Claude vision,
+  8 scored dimensions). Built; live LLM calls need an API key. (`docs/phase3_reviewer.md`)
+- **Phase 4 ✓** — scoring-head harness + design-only baseline. **Key finding:**
+  OpenReview reviewer scores measure the *paper's* merit, so design metrics don't
+  predict them (Spearman ≈ 0) — they're the right target only for LLM-read
+  *content* dimensions, while *design* quality must be validated against
+  poster-native ground truth (P2PEval / Paper2Poster rubrics). Corrected
+  architecture in `docs/phase4_scoring_head.md`.
+
+### Scoring-head target, corrected (Phase 4)
+
+| Dimension type | Ground truth |
+|---|---|
+| Content merit (importance, contribution, contextualization) | OpenReview reviewer scores — but only via **LLM dimensions read from the poster** (needs key); design metrics alone are orthogonal to it |
+| Design / communication (readability, hierarchy, figure quality) | **Poster-native** labels: P2PEval human checklists + Paper2Poster VLM-judge rubrics — *not* OpenReview |
+| Grounded design facts in the review | Deterministic metrics engine (Phase 2) — descriptive, cited by number |
+
+Next: Phase 4b (LLM content-dimension features, needs key), Phase 4c (design head
+vs rubric labels), then the web app.
