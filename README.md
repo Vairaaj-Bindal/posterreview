@@ -57,8 +57,12 @@ app/          # (later) web app
 - **Phase 2 ✓** — deterministic design-metrics engine (font sizes, contrast,
   coverage, columns, palette), validated on real posters. (`docs/phase2_metrics_engine.md`)
 - **Phase 2b ✓** — OCR fallback (RapidOCR) for image-flattened poster PDFs.
-- **Phase 3 ✓** — retrieval-grounded + metrics-grounded reviewer (Claude vision,
-  8 scored dimensions). Built; live LLM calls need an API key. (`docs/phase3_reviewer.md`)
+- **Phase 3 ✓** — retrieval-grounded + metrics-grounded reviewer (8 scored
+  dimensions). (`docs/phase3_reviewer.md`)
+- **Phase 5 ✓** — **zero-cost local backend**: runs the whole reviewer with no
+  API key on open models (MLX on Apple Silicon, or Ollama with a 70B on a DGX
+  Spark / any box). LLM scores content only; design is the deterministic rubric.
+  (`docs/phase5_zero_cost.md`)
 - **Phase 4 ✓** — scoring-head harness + design-only baseline. **Key finding:**
   OpenReview reviewer scores measure the *paper's* merit, so design metrics don't
   predict them (Spearman ≈ 0) — they're the right target only for LLM-read

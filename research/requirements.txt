@@ -8,3 +8,10 @@ scikit-learn
 rapidocr-onnxruntime
 onnxruntime
 anthropic
+
+# --- local zero-cost LLM backend ---
+# Apple Silicon (this Mac) — MLX engine:
+mlx-lm
+transformers>=4.48,<5.0   # mlx-lm 0.31 breaks on transformers 5.x
+# DGX Spark / any CUDA or Linux box — no python dep: run Ollama (ollama.com),
+#   `ollama pull llama3.3`, then set OLLAMA_HOST; the reviewer auto-detects it.

@@ -34,16 +34,16 @@ import design_score as design_score_mod
 MODEL = "claude-opus-4-8"
 IMAGE_LONG_EDGE_PX = 1600  # under the 2576px high-res cap; enough for legibility
 
-# ---- dimensions: content (what paperreview.ai scores) + communication (our add) ----
+# The LLM scores only CONTENT/messaging dimensions — things judgeable from the poster's
+# text. DESIGN (legibility, contrast, density, structure, palette) is owned by the
+# deterministic design score (Phase 4c), so the LLM never re-judges (or contradicts) the
+# measured visual facts. This is the Phase-4 split: rubric for design, LLM for content.
 DIMENSIONS = [
     ("importance", "content", "Importance of the research question / problem."),
-    ("claim_support", "content", "Are the claims adequately supported by the shown results?"),
+    ("claim_support", "content", "Are the claims adequately supported by the results described?"),
     ("contextualization", "content", "Positioning vs prior work / novelty, given the retrieved related papers."),
-    ("visual_hierarchy", "communication", "Does the layout guide the eye and establish clear reading order?"),
-    ("readability", "communication", "Legibility: font sizes, contrast, text density (use the measured metrics)."),
-    ("figure_quality", "communication", "Are figures clear, well-labeled, and doing real explanatory work?"),
-    ("takeaway_clarity", "communication", "Can a passerby grab the main message in ~30 seconds?"),
-    ("self_containedness", "communication", "Does the poster stand alone without the author narrating it?"),
+    ("takeaway_clarity", "communication", "Is there a clear main message/finding a passerby could grab quickly?"),
+    ("self_containedness", "communication", "Does the text stand alone, or does it seem to rely on the author narrating?"),
 ]
 
 
@@ -130,91 +130,162 @@ def metrics_summary(m) -> str:
     return "\n".join(lines)
 
 
-def generate_queries(client, title, text, topics) -> list[str]:
-    prompt = (
-        "You are helping find related prior work for a research poster. "
-        "Generate 4 arXiv search queries at varying specificity to surface: the same problem, "
-        "competing methods/baselines, and related techniques. Keep each query 3-8 words.\n\n"
-        f"Title: {title}\nTopics: {', '.join(topics) if topics else 'n/a'}\n\n"
-        f"Poster text (excerpt):\n{text[:2500]}"
-    )
-    resp = client.messages.parse(
-        model=MODEL, max_tokens=2000,
-        messages=[{"role": "user", "content": prompt}],
-        output_format=Queries,
-    )
-    return (resp.parsed_output.queries if resp.parsed_output else [])[:4]
+_STOP = set("the a an of for and to in on with using via from into over under this that "
+            "we our their its is are be can via toward towards based novel new approach "
+            "method model results using paper poster study analysis via".split())
 
 
-SYSTEM = """You are an expert reviewer of academic research posters, in the spirit of a \
-top-conference reviewer who also has a designer's eye. You give specific, constructive, \
-honest feedback — not praise. You are given three things: (1) an image of the poster, \
-(2) MEASURED design metrics extracted deterministically from the poster file (font sizes, \
-contrast, text coverage, columns — treat these as ground truth and cite them by number), \
-and (3) retrieved related work from arXiv to judge novelty and contextualization.
+def heuristic_queries(title, text) -> list[str]:
+    """LLM-free arXiv queries: the title, plus salient multiword terms from the text.
+    Keeps retrieval zero-cost and deterministic."""
+    import re as _re
+    from collections import Counter
+    queries = []
+    t = " ".join(title.split())
+    if t and t != "(untitled)":
+        queries.append(t[:120])
+    # salient terms: frequent capitalized phrases + frequent long words
+    words = _re.findall(r"[A-Za-z][A-Za-z\-]{3,}", text)
+    freq = Counter(w.lower() for w in words if w.lower() not in _STOP)
+    top = [w for w, _ in freq.most_common(8)]
+    if len(top) >= 4:
+        queries.append(" ".join(top[:4]))
+        queries.append(" ".join(top[2:6]))
+    # capitalized multiword phrases (likely method/dataset names)
+    phrases = _re.findall(r"\b([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+){1,3})\b", text)
+    ph = [p for p in phrases if p.lower() not in {title.lower()}][:2]
+    queries.extend(ph)
+    # dedup, cap
+    seen, out = set(), []
+    for q in queries:
+        k = q.lower().strip()
+        if k and k not in seen:
+            seen.add(k); out.append(q)
+    return out[:4]
 
-Score each dimension 1-5 (1 poor, 5 excellent; 5 is rare). Ground every design claim in the \
-measured metrics rather than guessing. For contextualization, refer to the specific related \
-papers. Be concrete in suggestions — an author should know exactly what to change."""
+
+SYSTEM = """You are an expert reviewer of academic research posters — a top-conference \
+reviewer giving specific, constructive, honest feedback, not praise. You are given: (1) the \
+poster's extracted text, (2) retrieved related work from arXiv, and (3) MEASURED design metrics \
+for context. Score ONLY the research-content and messaging dimensions asked for. \
+
+Do NOT judge or comment on visual design, readability, contrast, font sizes, or layout — those \
+are measured separately and objectively; anything you'd say about them would be a guess. If the \
+measured metrics contradict an instinct (e.g. you assume a dense poster is unreadable but the \
+measurements say contrast and font sizes are fine), defer to the measurements. \
+
+Score each dimension 1-5 (1 poor, 5 excellent; 5 is rare). Be concrete about the research and \
+messaging — an author should know exactly what to change."""
+
+_CATEGORY = {n: c for n, c, _ in DIMENSIONS}
+_DIM_NAMES = [n for n, _, _ in DIMENSIONS]
 
 
-def build_review(pdf_path: str, use_arxiv: bool = True) -> dict:
-    import anthropic
-    client = anthropic.Anthropic()
-
+def _review_inputs(pdf_path, use_arxiv):
     doc = fitz.open(pdf_path)
     page = doc[0]
     m = poster_metrics.analyze_poster(pdf_path)
     title, text = extract_title_and_text(page, m)
-    img_b64 = render_image_b64(page)
-
     related = []
     if use_arxiv:
-        print("  generating search queries...", file=sys.stderr)
-        queries = generate_queries(client, title, text, [])
+        print("  search queries (heuristic)...", file=sys.stderr)
+        queries = heuristic_queries(title, text)
         print(f"  queries: {queries}", file=sys.stderr)
-        print("  retrieving related work from arXiv...", file=sys.stderr)
         related = arxiv_retrieval.retrieve_related(queries) if queries else []
         print(f"  {len(related)} related papers", file=sys.stderr)
-
     related_block = "\n".join(
-        f"- [{p['year']}] {p['title']} ({p['arxiv_id']}): {p['abstract'][:300]}"
-        for p in related
+        f"- [{p['year']}] {p['title']} ({p['arxiv_id']}): {p['abstract'][:300]}" for p in related
     ) or "(no related work retrieved)"
-
     dims_spec = "\n".join(f"- {n} [{cat}]: {desc}" for n, cat, desc in DIMENSIONS)
     user_text = (
         f"Review this poster across exactly these dimensions:\n{dims_spec}\n\n"
         f"=== MEASURED DESIGN METRICS (ground truth) ===\n{metrics_summary(m)}\n\n"
-        f"=== POSTER TEXT (extracted) ===\n{text}\n\n"
+        f"=== POSTER TEXT (extracted) ===\n{text[:5000]}\n\n"
         f"=== RETRIEVED RELATED WORK (arXiv) ===\n{related_block}"
     )
+    return m, page, related, user_text
 
-    print("  generating review...", file=sys.stderr)
+
+def _normalize(raw: dict) -> dict | None:
+    """Coerce a local model's JSON into the standard review shape."""
+    if not raw:
+        return None
+    dims_in = raw.get("dimensions", {})
+    dimensions = []
+    for name in _DIM_NAMES:
+        d = dims_in.get(name, {}) if isinstance(dims_in, dict) else {}
+        try:
+            score = int(round(float(d.get("score", 3))))
+        except (TypeError, ValueError):
+            score = 3
+        sugg = d.get("suggestions") or ([d["suggestion"]] if d.get("suggestion") else [])
+        dimensions.append({
+            "name": name, "category": _CATEGORY[name],
+            "score": max(1, min(5, score)),
+            "rationale": str(d.get("rationale", "")).strip(),
+            "suggestions": [str(s) for s in (sugg if isinstance(sugg, list) else [sugg]) if s],
+        })
+    aslist = lambda v: [str(x) for x in v] if isinstance(v, list) else ([str(v)] if v else [])
+    return {
+        "one_line_summary": str(raw.get("one_line_summary", "")).strip(),
+        "dimensions": dimensions,
+        "top_strengths": aslist(raw.get("top_strengths")),
+        "top_weaknesses": aslist(raw.get("top_weaknesses")),
+        "grounded_design_notes": aslist(raw.get("grounded_design_notes")),
+    }
+
+
+def _review_local(user_text: str) -> dict | None:
+    import local_llm
+    print(f"  generating review (local: {local_llm.engine_info()})...", file=sys.stderr)
+    schema = (
+        '{\n'
+        '  "one_line_summary": "string",\n'
+        '  "dimensions": {\n'
+        + ",\n".join(f'    "{n}": {{"score": 1-5, "rationale": "string", "suggestion": "string"}}'
+                     for n in _DIM_NAMES)
+        + '\n  },\n'
+        '  "top_strengths": ["string"],\n'
+        '  "top_weaknesses": ["string"],\n'
+        '  "grounded_design_notes": ["string (cite a measured number)"]\n'
+        '}'
+    )
+    prompt = (user_text + "\n\n"
+              "Respond with ONLY this JSON object (no prose, no code fences):\n" + schema)
+    return _normalize(local_llm.generate_json(prompt, system=SYSTEM, max_tokens=3500))
+
+
+def _review_anthropic(page, user_text: str) -> dict | None:
+    import anthropic
+    client = anthropic.Anthropic()
+    print("  generating review (anthropic: claude-opus-4-8)...", file=sys.stderr)
+    img_b64 = render_image_b64(page)
     resp = client.messages.parse(
-        model=MODEL, max_tokens=12000,
-        thinking={"type": "adaptive"},
-        system=SYSTEM,
+        model=MODEL, max_tokens=12000, thinking={"type": "adaptive"}, system=SYSTEM,
         messages=[{"role": "user", "content": [
             {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": img_b64}},
             {"type": "text", "text": user_text},
         ]}],
         output_format=PosterReview,
     )
-    review = resp.parsed_output
+    return resp.parsed_output.model_dump() if resp.parsed_output else None
 
-    scores = [d.score for d in review.dimensions] if review else []
+
+def build_review(pdf_path: str, backend: str = "local", use_arxiv: bool = True) -> dict:
+    m, page, related, user_text = _review_inputs(pdf_path, use_arxiv)
+    review = _review_anthropic(page, user_text) if backend == "anthropic" else _review_local(user_text)
+    scores = [d["score"] for d in review["dimensions"]] if review else []
     provisional = round(sum(scores) / len(scores), 2) if scores else None
     return {
         "poster": pdf_path,
+        "backend": backend,
         "metrics": dataclasses.asdict(m),
         # Deterministic, key-free design score (Phase 4c) — validated by controlled
         # degradation, NOT trained on OpenReview (which measures the paper, not the poster).
         "design_score": design_score_mod.design_score(m),
         "related_work": related,
-        "review": review.model_dump() if review else None,
-        # NOTE: provisional = unweighted mean of LLM dimension scores. The trained
-        # scoring head (regression on PosterSum->OpenReview labels) is Phase 4.
+        "review": review,
+        # provisional = unweighted mean of LLM dimension scores (trained content head = Phase 4b)
         "provisional_score": provisional,
     }
 
@@ -254,10 +325,12 @@ def print_review(out: dict):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("pdf")
+    ap.add_argument("--backend", choices=["local", "anthropic"], default="local",
+                    help="local = open model via MLX/Ollama, zero cost (default); anthropic = needs key")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--no-arxiv", action="store_true")
     a = ap.parse_args()
-    out = build_review(a.pdf, use_arxiv=not a.no_arxiv)
+    out = build_review(a.pdf, backend=a.backend, use_arxiv=not a.no_arxiv)
     if a.json:
         print(json.dumps(out, indent=2, default=str))
     else:
