@@ -25,9 +25,25 @@ import numpy as np
 
 _WORD = re.compile(r"[A-Za-z]{4,}")
 
+# OCR box height overshoots the true point size slightly (calibrated on vector
+# posters with known font sizes: 36px-derived vs 34pt true).
+OCR_PT_FACTOR = 0.95
+OCR_RENDER_PX = 3000      # long-edge px for the OCR render (~higher DPI than metrics render)
+OCR_MIN_CONF = 0.5
+
+_OCR_ENGINE = None        # lazy singleton — model load is expensive
+
 
 def _wordy(t: str) -> bool:
     return bool(_WORD.search(t))
+
+
+def _get_ocr():
+    global _OCR_ENGINE
+    if _OCR_ENGINE is None:
+        from rapidocr_onnxruntime import RapidOCR  # optional dep; only for image posters
+        _OCR_ENGINE = RapidOCR()
+    return _OCR_ENGINE
 
 # Legibility thresholds, expressed in points on a poster whose long edge is
 # normalized to 48 inches (a standard large-format poster). Orientation- and
@@ -59,6 +75,7 @@ class Span:
 @dataclass
 class PosterMetrics:
     regime: str = "vector"
+    text_source: str = "vector"     # vector | ocr | none
     page_w_pt: float = 0.0
     page_h_pt: float = 0.0
     print_w_in: float = 0.0
@@ -160,6 +177,44 @@ def _extract_spans(page, scale_to_48in) -> list[Span]:
                     font=font, bold=bool(s.get("flags", 0) & 2**4) or "bold" in font.lower(),
                     color=_int_to_rgb(s.get("color", 0)), bbox=tuple(s["bbox"]),
                 ))
+    return spans
+
+
+def _ocr_spans(page, scale_to_48in):
+    """Build Spans for an image-flattened poster via OCR.
+
+    Renders at higher DPI, runs RapidOCR, and produces the same Span shape as the
+    vector path so all downstream classification is identical. Font size comes
+    from the OCR box height (calibrated); text color is sampled from the render.
+    """
+    r = page.rect
+    scale = OCR_RENDER_PX / max(r.width, r.height)   # px per pt
+    pix = page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
+    img = np.frombuffer(pix.samples, np.uint8).reshape(pix.height, pix.width, pix.n)[:, :, :3]
+    result, _ = _get_ocr()(img)
+    spans = []
+    for box, text, conf in (result or []):
+        if conf < OCR_MIN_CONF or not text.strip():
+            continue
+        xs = [pt[0] for pt in box]
+        ys = [pt[1] for pt in box]
+        x0, y0, x1, y1 = min(xs), min(ys), max(xs), max(ys)
+        h_px = ((y1 - y0) + (abs(box[3][1] - box[0][1]) + abs(box[2][1] - box[1][1])) / 2) / 2
+        size_pt = (h_px / scale) * OCR_PT_FACTOR
+        if (y1 - y0) / scale > 0.3 * r.height:
+            continue  # oversized/merged artifact box
+        # sample text color: pixels in the box furthest from the box's dominant (bg) color
+        patch = img[int(y0):int(y1), int(x0):int(x1)].reshape(-1, 3).astype(float)
+        if len(patch) < 4:
+            continue
+        bg = np.median(patch, axis=0)
+        far = patch[np.abs(patch - bg).max(axis=1) > 40]
+        fg = np.median(far, axis=0) if len(far) > 2 else np.array([0, 0, 0])
+        bbox_pt = (x0 / scale, y0 / scale, x1 / scale, y1 / scale)
+        spans.append(Span(
+            text=text, size_pt=size_pt, norm_pt=size_pt * scale_to_48in,
+            font="", bold=False, color=tuple(int(v) for v in fg), bbox=bbox_pt,
+        ))
     return spans
 
 
@@ -334,13 +389,22 @@ def analyze_poster(pdf_path: str) -> PosterMetrics:
     out.scale_to_48in = round(NORM_LONG_EDGE_IN / long_edge_in, 3) if long_edge_in else 1.0
 
     spans = _extract_spans(page, out.scale_to_48in)
-    n_chars = sum(len(s.text.strip()) for s in spans)
-    out.regime = "vector" if n_chars > 200 else "image"
+    vector_chars = sum(len(s.text.strip()) for s in spans)
+    out.regime = "vector" if vector_chars > 200 else "image"
+    if out.regime == "image":
+        try:
+            spans = _ocr_spans(page, out.scale_to_48in)
+            out.text_source = "ocr"
+        except ImportError:
+            out.text_source = "none"   # rapidocr not installed; render metrics only
+    else:
+        out.text_source = "vector"
+
     out.n_text_spans = len(spans)
-    out.n_chars = n_chars
+    out.n_chars = sum(len(s.text.strip()) for s in spans)
     out.n_words = sum(len(s.text.split()) for s in spans)
     out.n_text_blocks = len(page.get_text("blocks"))
-    out.n_fonts = len({s.font for s in spans})
+    out.n_fonts = len({s.font for s in spans if s.font})
 
     if spans:
         _classify_fonts(spans, out)
@@ -353,7 +417,9 @@ def analyze_poster(pdf_path: str) -> PosterMetrics:
     out.whitespace = _whitespace(img, bg)
     # everything that isn't background = text + figures + decoration
     out.visual_density = round(1 - out.whitespace, 4)
-    out.n_figures = _count_figures(page)
+    # raster-figure count is only meaningful for vector PDFs; a flattened poster
+    # is one big image (or many tiles) and can't be segmented into figures here.
+    out.n_figures = _count_figures(page) if out.regime == "vector" else -1
     out.n_columns = _column_count_visual(img, bg)
 
     out.n_palette_colors, out.saturated_hues = _palette_stats(img)
@@ -367,9 +433,13 @@ def analyze_poster(pdf_path: str) -> PosterMetrics:
 def _add_flags(out: PosterMetrics):
     f = out.flags
     if out.regime == "image":
-        f.append("IMAGE-BASED PDF: text is flattened; font metrics unavailable "
-                 "without OCR. Coverage/contrast/palette still valid.")
-    if out.regime == "vector":
+        if out.text_source == "ocr":
+            f.append("IMAGE-BASED PDF: text was recovered via OCR; font sizes are "
+                     "estimated from OCR box heights (±a few pt).")
+        else:
+            f.append("IMAGE-BASED PDF: text is flattened and OCR is unavailable; "
+                     "coverage/contrast/palette still valid, font metrics are not.")
+    if out.text_source in ("vector", "ocr"):
         if out.body_pt and out.body_pt < BODY_MIN_PT:
             f.append(f"Body text ~{out.body_pt:.0f}pt (48in-normalized) is below the "
                      f"{BODY_MIN_PT:.0f}pt legibility floor for viewing from a few feet.")
@@ -408,12 +478,15 @@ def main():
     print(f"\n=== {a.pdf} ===")
     print(f"regime: {m.regime} | {m.print_w_in}x{m.print_h_in}in {m.orientation} "
           f"(~{m.nearest_std_size}, aspect {m.aspect})")
-    print(f"text: {m.n_words} words / {m.n_chars} chars in {m.n_text_spans} spans, "
-          f"{m.n_fonts} fonts, {m.n_figures} figures, {m.n_columns} columns")
-    if m.regime == "vector":
-        print(f"fonts (48in-norm pt): body ~{m.body_pt:.0f} | heading ~{m.heading_pt:.0f} | title ~{m.title_pt:.0f}")
+    figs = "n/a" if m.n_figures < 0 else str(m.n_figures)
+    print(f"text: {m.n_words} words / {m.n_chars} chars in {m.n_text_spans} spans "
+          f"(source: {m.text_source}), {figs} figures, {m.n_columns} columns")
+    if m.text_source in ("vector", "ocr"):
+        est = " (OCR-estimated)" if m.text_source == "ocr" else ""
+        print(f"fonts (48in-norm pt){est}: body ~{m.body_pt:.0f} | heading ~{m.heading_pt:.0f} | title ~{m.title_pt:.0f}")
+    figline = f" | {m.n_figures} raster figures" if m.n_figures >= 0 else ""
     print(f"layout: text blocks cover {m.text_coverage*100:.0f}% of area | "
-          f"{m.whitespace*100:.0f}% is background color {m.bg_color} | {m.n_figures} raster figures")
+          f"{m.whitespace*100:.0f}% is background color {m.bg_color}{figline}")
     print(f"contrast: median {m.median_contrast}:1 | min {m.min_contrast}:1 | {m.pct_text_below_wcag}% below WCAG AA")
     print(f"palette: {m.n_palette_colors} dominant colors, {m.saturated_hues} strongly saturated")
     if m.flags:

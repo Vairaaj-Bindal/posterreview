@@ -5,3 +5,5 @@ pymupdf
 numpy
 pillow
 scikit-learn
+rapidocr-onnxruntime
+onnxruntime

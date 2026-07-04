@@ -64,8 +64,40 @@ wrong; these are the fixes that made outputs trustworthy:
 - **Image-regime posters** get no font metrics until OCR is wired in (Phase 2b:
   tesseract or the VLM itself). Coverage/contrast/columns/palette still work.
 
-## Next (Phase 2b / Phase 3)
+## Phase 2b — OCR fallback for image-flattened posters (done)
 
-- OCR fallback for image posters (font sizes from OCR box heights).
+Some poster PDFs are flattened images (10488 was 1,337 image tiles, 8 chars of
+real text). These now get font metrics + text content via **RapidOCR**
+(`rapidocr-onnxruntime`, ONNX — pip-only, no system binary; Homebrew/tesseract
+weren't available). OCR spans reuse the exact same `Span` shape, so all
+downstream classification (body/heading/title, contrast, coverage, columns) runs
+identically. Font size = OCR box height × 0.95 (calibrated). `text_source` field
+records `vector | ocr | none`; if RapidOCR isn't installed the engine degrades
+gracefully to render-only metrics.
+
+**Controlled validation** — flattened a vector poster (10434) whose true font
+sizes are known, ran the OCR path, compared:
+
+| metric | vector truth | OCR | |
+|---|---|---|---|
+| body | 32pt | 33pt | ✓ |
+| text coverage | 36% | 36% | ✓ |
+| background | 83% | 82% | ✓ |
+| columns | 4 | 3 | ✓ |
+| contrast | 21:1 | 10:1 | ✓ same verdict |
+| title | 91pt | 166pt | ✗ ~1.8× over |
+| heading | 46pt | 76pt | ✗ over |
+
+- **Body size (the key legibility signal) is accurate** — single-line boxes
+  calibrate cleanly.
+- **Large display text (titles/headings) overshoots** because OCR merges stacked
+  lines into one tall box. The error is conservative for the "title too small"
+  flag (we under-claim smallness, never false-alarm). Documented, not hidden.
+- OCR sees only *visible* text: it recovered the 4.7k readable chars and ignored
+  10434's 21k hidden fine-print — a feature.
+- ~6s/poster (one-off, acceptable). Model is a lazy singleton.
+
+## Next (Phase 3)
+
 - Feed these metrics as grounded evidence into the review generator, and as
   features into the scoring head alongside the PosterSum→OpenReview labels.
