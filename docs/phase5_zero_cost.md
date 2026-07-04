@@ -90,10 +90,26 @@ export ANTHROPIC_API_KEY=...
 .venv/bin/python research/scripts/review.py <poster.pdf> --backend anthropic
 ```
 
-## Next
+## Live on the DGX Spark (done)
 
-- Stand up the model on the DGX Spark and compare 70B vs the 7B on the same
-  posters (quality delta at $0).
+The Spark path is working end-to-end. Setup: passwordless SSH key from the Mac,
+Ollama already serving on the Spark (GB10, 121GB RAM), reached from the Mac over
+an encrypted `ssh -f -N -L 11434:localhost:11434` tunnel (nothing exposed to the
+network). One command: `run_review_spark.sh <poster.pdf>` (auto-opens the tunnel).
+
+Model: **qwen2.5:72b** (Vairaaj rejected gemma). Quality is a large jump over the
+Mac's 7B — real reviewer-grade, specific critiques that correctly cite the
+measured metrics (e.g. *"the alignment of nociceptive maps with tactile maps in
+SI is not as strongly supported; the fMRI phase-encoded mapping could be more
+clearly explained"*). All at $0.
+
+Speed on the GB10: ~5 min cold (first call loads the 47GB model), **~2.4 min warm**
+per review. Async-friendly (paperreview.ai is async too). `keep_alive: 30m` on
+the Ollama call keeps the model resident so back-to-back reviews stay warm. If
+snappier latency is wanted, a mid-size non-gemma model (e.g. `qwen2.5:32b`) trades
+a little quality for speed.
+
+## Next
 - Phase 4b (content scoring head) can now run key-free too — generate the LLM
   content-dimension scores with the local model over the 293 labeled posters.
 - Web app front door (upload → review), served from whichever engine is available.

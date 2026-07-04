@@ -66,6 +66,7 @@ def _ollama_generate(prompt, system, max_tokens) -> str:
            [{"role": "user", "content": prompt}]
     body = json.dumps({
         "model": OLLAMA_MODEL, "messages": msgs, "stream": False,
+        "keep_alive": "30m",  # keep the big model resident so reviews don't cold-reload
         "options": {"temperature": 0.3, "num_predict": max_tokens},
     }).encode()
     req = urllib.request.Request(f"http://{OLLAMA_HOST}/api/chat", data=body,
