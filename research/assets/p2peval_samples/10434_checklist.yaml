@@ -1,0 +1,35 @@
+name: 10434
+checklist:
+  - description: Does the poster clearly state the title related to the rapid learning curve assessment in an ex vivo training system for microincisional glaucoma surgery?
+    max_score: 4
+  - description: Is the introduction section informative, highlighting the challenges of learning microincisional glaucoma surgery and the need for an ex vivo model?
+    max_score: 5
+  - description: Are the materials and methods well described, including the training setup, surgical procedure, and assessment criteria?
+    max_score: 3
+  - description: Does the poster present the key results, including surgical time reduction, improvement in ablation arc length, and Operating Room Score progression?
+    max_score: 3
+  - description: Is the conclusion section comprehensive, emphasizing the effectiveness of the ex vivo training model and the importance of continued training for outflow improvement?
+    max_score: 4
+  - description: Are the disclosures and funding sources clearly mentioned?
+    max_score: 4
+  - description: Is setup for microincisional glaucoma surgery included and clearly labeled?
+    figure: 0
+    max_score: 5
+  - description: Is Operating Room Score and eye number included and well-explained?
+    figure: 1
+    max_score: 5
+  - description: Is surgical time and eye number included and clearly interpreted?
+    figure: 2
+    max_score: 4
+  - description: Is improvement of ablation arc length and eye number included and well-explained?
+    figure: 3
+    max_score: 5
+  - description: Is fluorescent canalograms and eye number included and clearly interpreted?
+    figure: 4
+    max_score: 5
+  - description: Does the poster provide contact information for the authors?
+    max_score: 3
+  - description: Is the mention of trainees without prior angle surgery experience appropriate and relevant?
+    max_score: 4
+  - description: Does the poster emphasize the importance of the ex vivo model for safe and effective training?
+    max_score: 5

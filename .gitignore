@@ -1,0 +1,7 @@
+research/data/
+*.parquet
+*.pyc
+__pycache__/
+.venv/
+.env
+.DS_Store
