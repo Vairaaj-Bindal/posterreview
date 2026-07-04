@@ -5,3 +5,6 @@ __pycache__/
 .venv/
 .env
 .DS_Store
+
+# large/reproducible poster PDFs
+research/assets/p2peval_posters/
