@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field
 
 import poster_metrics
 import arxiv_retrieval
+import design_score as design_score_mod
 
 MODEL = "claude-opus-4-8"
 IMAGE_LONG_EDGE_PX = 1600  # under the 2576px high-res cap; enough for legibility
@@ -207,6 +208,9 @@ def build_review(pdf_path: str, use_arxiv: bool = True) -> dict:
     return {
         "poster": pdf_path,
         "metrics": dataclasses.asdict(m),
+        # Deterministic, key-free design score (Phase 4c) — validated by controlled
+        # degradation, NOT trained on OpenReview (which measures the paper, not the poster).
+        "design_score": design_score_mod.design_score(m),
         "related_work": related,
         "review": review.model_dump() if review else None,
         # NOTE: provisional = unweighted mean of LLM dimension scores. The trained
@@ -221,8 +225,13 @@ def print_review(out: dict):
         print("No review produced."); return
     print(f"\n{'='*70}\n{out['poster']}\n{'='*70}")
     print(f"\n▶ {r['one_line_summary']}")
-    print(f"\nProvisional score: {out['provisional_score']}/5  "
-          f"(unweighted mean of dimensions — trained scoring head is Phase 4)")
+    ds = out.get("design_score")
+    if ds:
+        print(f"\nDesign score (deterministic, key-free): {ds['overall']}/100")
+        for k, v in ds["subscores"].items():
+            print(f"    {k:16s} {v:5.1f}  — {ds['notes'][k]}")
+    print(f"\nContent/communication (LLM) provisional score: {out['provisional_score']}/5  "
+          f"(unweighted mean of dimensions — trained content head is Phase 4b)")
     print("\nDimensions:")
     for d in r["dimensions"]:
         print(f"  [{d['score']}/5] {d['name']} ({d['category']})")
