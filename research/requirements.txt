@@ -7,3 +7,4 @@ pillow
 scikit-learn
 rapidocr-onnxruntime
 onnxruntime
+anthropic
