@@ -169,8 +169,11 @@ if __name__ == "__main__":
     print(f"PosterReview — engine: {local_llm.engine_info()}")
     # production server if available; dev server otherwise. Bind localhost only —
     # the Cloudflare tunnel is the sole public ingress.
+    # 127.0.0.1 by default (tunnel is sole ingress); the container sets 0.0.0.0
+    # since its published port is itself bound to the host's localhost only.
+    bind = os.environ.get("POSTERREVIEW_BIND", "127.0.0.1")
     try:
         from waitress import serve
-        serve(app, host="127.0.0.1", port=5000, threads=8)
+        serve(app, host=bind, port=5000, threads=8)
     except ImportError:
-        app.run(host="127.0.0.1", port=5000, debug=False, threaded=True)
+        app.run(host=bind, port=5000, debug=False, threaded=True)
