@@ -8,3 +8,4 @@ __pycache__/
 
 # large/reproducible poster PDFs
 research/assets/p2peval_posters/
+app/uploads/
