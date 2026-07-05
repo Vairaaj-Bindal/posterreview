@@ -17,7 +17,7 @@ docker run -d --name posterreview --restart unless-stopped \
   -p 127.0.0.1:5000:5000 \
   --memory=6g --cpus=4 --pids-limit=256 \
   --read-only \
-  --tmpfs /srv/app/uploads:size=128m,mode=1700 \
+  --tmpfs /srv/app/uploads:size=128m,mode=1777 \
   --tmpfs /tmp:size=128m \
   --tmpfs /home/appuser/.cache:size=512m \
   --security-opt no-new-privileges \

@@ -142,10 +142,16 @@ def start_review():
         _active += 1
     job_id = uuid.uuid4().hex
     pdf_path = UPLOADS / f"{job_id}.pdf"
-    f.save(pdf_path)
-    JOBS[job_id] = {"status": "running"}
-    threading.Thread(target=_run, args=(job_id, pdf_path, request.form.get("arxiv", "on") == "on"),
-                     daemon=True).start()
+    try:
+        f.save(pdf_path)
+        JOBS[job_id] = {"status": "running"}
+        threading.Thread(target=_run, args=(job_id, pdf_path, request.form.get("arxiv", "on") == "on"),
+                         daemon=True).start()
+    except Exception:  # never leak the concurrency slot if setup fails before the thread runs
+        with _lock:
+            _active -= 1
+        log.exception("failed to start review job=%s", job_id)
+        return jsonify({"error": "Could not process the upload."}), 500
     log.info("review started job=%s ip=%s", job_id, ip)
     return jsonify({"job_id": job_id})
 
