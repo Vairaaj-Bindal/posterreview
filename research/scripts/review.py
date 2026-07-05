@@ -181,8 +181,36 @@ messaging — an author should know exactly what to change."""
 _CATEGORY = {n: c for n, c, _ in DIMENSIONS}
 _DIM_NAMES = [n for n, _, _ in DIMENSIONS]
 
+# Venue context so the review is judged against the right community's bar/emphasis.
+VENUES = {
+    "ICLR": "a top deep-learning venue; prizes novelty, rigorous empirical or theoretical contributions, and clarity",
+    "NeurIPS": "the flagship ML venue; broad across theory, algorithms, and applications; prizes significance and soundness",
+    "ICML": "a premier ML venue; prizes methodological novelty with strong empirical or theoretical support",
+    "CVPR": "the top computer-vision venue; prizes novelty, strong benchmark experiments, and compelling visual results",
+    "AAAI": "a broad AI venue; prizes significance across AI subfields and clearly stated contributions",
+    "IJCAI": "a broad AI venue; prizes general-AI significance and clarity",
+    "ACL": "a top NLP venue; prizes linguistic/empirical rigor, novelty, and reproducibility",
+    "EMNLP": "a leading empirical-NLP venue; prizes strong empirical NLP contributions and analysis",
+    "OSDI": "a top systems venue; prizes real systems, thorough evaluation, and practical impact",
+    "SOSP": "the flagship OS/systems venue; prizes novel systems design and rigorous evaluation",
+    "VLDB": "a top databases venue; prizes data-management contributions with strong evaluation",
+    "SIGMOD": "a premier databases venue; prizes database systems/theory contributions with solid experiments",
+}
 
-def _review_inputs(pdf_path, use_arxiv):
+
+def venue_context(venue: str | None) -> str:
+    if not venue:
+        return "No specific venue was given — judge against general strong research-poster standards."
+    desc = VENUES.get(venue)
+    if desc:
+        return (f"This poster targets {venue}, {desc}. Judge importance, contribution, and "
+                f"contextualization against that community's bar and emphasis, and note whether the "
+                f"framing and positioning fit the venue.")
+    return (f"This poster targets {venue}. Judge importance, contribution, and contextualization "
+            f"against the norms of that venue, and note whether the framing fits it.")
+
+
+def _review_inputs(pdf_path, use_arxiv, venue=None):
     doc = fitz.open(pdf_path)
     page = doc[0]
     m = poster_metrics.analyze_poster(pdf_path)
@@ -200,6 +228,7 @@ def _review_inputs(pdf_path, use_arxiv):
     dims_spec = "\n".join(f"- {n} [{cat}]: {desc}" for n, cat, desc in DIMENSIONS)
     user_text = (
         f"Review this poster across exactly these dimensions:\n{dims_spec}\n\n"
+        f"=== TARGET VENUE ===\n{venue_context(venue)}\n\n"
         f"=== MEASURED DESIGN METRICS (ground truth) ===\n{metrics_summary(m)}\n\n"
         f"=== POSTER TEXT (extracted) ===\n{text[:5000]}\n\n"
         f"=== RETRIEVED RELATED WORK (arXiv) ===\n{related_block}"
@@ -272,14 +301,16 @@ def _review_anthropic(page, user_text: str) -> dict | None:
     return resp.parsed_output.model_dump() if resp.parsed_output else None
 
 
-def build_review(pdf_path: str, backend: str = "local", use_arxiv: bool = True) -> dict:
-    m, page, related, user_text = _review_inputs(pdf_path, use_arxiv)
+def build_review(pdf_path: str, backend: str = "local", use_arxiv: bool = True,
+                 venue: str | None = None) -> dict:
+    m, page, related, user_text = _review_inputs(pdf_path, use_arxiv, venue)
     review = _review_anthropic(page, user_text) if backend == "anthropic" else _review_local(user_text)
     scores = [d["score"] for d in review["dimensions"]] if review else []
     provisional = round(sum(scores) / len(scores), 2) if scores else None
     return {
         "poster": pdf_path,
         "backend": backend,
+        "venue": venue or "",
         "metrics": dataclasses.asdict(m),
         # Deterministic, key-free design score (Phase 4c) — validated by controlled
         # degradation, NOT trained on OpenReview (which measures the paper, not the poster).
@@ -330,8 +361,9 @@ def main():
                     help="local = open model via MLX/Ollama, zero cost (default); anthropic = needs key")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--no-arxiv", action="store_true")
+    ap.add_argument("--venue", default=None, help="target venue for context (e.g. ICLR, NeurIPS)")
     a = ap.parse_args()
-    out = build_review(a.pdf, backend=a.backend, use_arxiv=not a.no_arxiv)
+    out = build_review(a.pdf, backend=a.backend, use_arxiv=not a.no_arxiv, venue=a.venue)
     if a.json:
         print(json.dumps(out, indent=2, default=str))
     else:

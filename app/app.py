@@ -70,12 +70,12 @@ def rate_ok(ip) -> bool:
         return True
 
 
-def _run(job_id, pdf_path, use_arxiv):
+def _run(job_id, pdf_path, use_arxiv, venue):
     global _active
     proc = None
     try:
         proc = subprocess.Popen(
-            [sys.executable, WORKER, str(pdf_path), "1" if use_arxiv else "0"],
+            [sys.executable, WORKER, str(pdf_path), "1" if use_arxiv else "0", venue or ""],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             start_new_session=True,  # own process group, so we can kill children too
         )
@@ -142,10 +142,14 @@ def start_review():
         _active += 1
     job_id = uuid.uuid4().hex
     pdf_path = UPLOADS / f"{job_id}.pdf"
+    # venue is free text ("Other") or one of the known list; passed as argv (no shell),
+    # but cap length and strip control chars defensively.
+    venue = "".join(c for c in (request.form.get("venue", "") or "") if c.isprintable())[:60].strip()
     try:
         f.save(pdf_path)
         JOBS[job_id] = {"status": "running"}
-        threading.Thread(target=_run, args=(job_id, pdf_path, request.form.get("arxiv", "on") == "on"),
+        threading.Thread(target=_run,
+                         args=(job_id, pdf_path, request.form.get("arxiv", "on") == "on", venue),
                          daemon=True).start()
     except Exception:  # never leak the concurrency slot if setup fails before the thread runs
         with _lock:

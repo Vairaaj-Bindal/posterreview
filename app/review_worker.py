@@ -35,12 +35,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "research", "sc
 
 def main():
     pdf_path, use_arxiv = sys.argv[1], sys.argv[2] == "1"
+    venue = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] else None
     import review as review_mod
-    out = review_mod.build_review(pdf_path, backend="local", use_arxiv=use_arxiv)
+    out = review_mod.build_review(pdf_path, backend="local", use_arxiv=use_arxiv, venue=venue)
     # strip anything not needed by the UI (keeps payload small, avoids leaking internals)
     slim = {
         "design_score": out.get("design_score"),
         "provisional_score": out.get("provisional_score"),
+        "venue": out.get("venue", ""),
         "review": out.get("review"),
         "related_work": [
             {"title": p.get("title", ""), "url": p.get("url", ""), "year": p.get("year", "")}
