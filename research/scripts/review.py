@@ -25,7 +25,12 @@ import sys
 from typing import List
 
 import fitz
-from pydantic import BaseModel, Field
+
+try:  # pydantic is only needed for the optional --backend anthropic path
+    from pydantic import BaseModel, Field
+    _HAS_PYDANTIC = True
+except ImportError:
+    _HAS_PYDANTIC = False
 
 import poster_metrics
 import arxiv_retrieval
@@ -47,26 +52,22 @@ DIMENSIONS = [
 ]
 
 
-class Dimension(BaseModel):
-    name: str
-    category: str
-    score: int = Field(description="1 (poor) to 5 (excellent)")
-    rationale: str = Field(description="2-4 sentences; cite measured design facts where relevant")
-    suggestions: List[str] = Field(description="1-3 concrete, actionable fixes")
+if _HAS_PYDANTIC:  # schema classes used only by the Anthropic structured-output path
+    class Dimension(BaseModel):
+        name: str
+        category: str
+        score: int = Field(description="1 (poor) to 5 (excellent)")
+        rationale: str = Field(description="2-4 sentences; cite measured design facts where relevant")
+        suggestions: List[str] = Field(description="1-3 concrete, actionable fixes")
 
-
-class PosterReview(BaseModel):
-    one_line_summary: str
-    dimensions: List[Dimension]
-    top_strengths: List[str]
-    top_weaknesses: List[str]
-    grounded_design_notes: List[str] = Field(
-        description="Specific claims tied to the measured metrics (e.g. 'body ~18pt is below the legibility floor')"
-    )
-
-
-class Queries(BaseModel):
-    queries: List[str]
+    class PosterReview(BaseModel):
+        one_line_summary: str
+        dimensions: List[Dimension]
+        top_strengths: List[str]
+        top_weaknesses: List[str]
+        grounded_design_notes: List[str] = Field(
+            description="Specific claims tied to the measured metrics (e.g. 'body ~18pt below legibility floor')"
+        )
 
 
 # ---------- steps ----------
