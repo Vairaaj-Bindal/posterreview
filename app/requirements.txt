@@ -1,0 +1,10 @@
+# Web app deps (Linux/Spark or Mac) — no mlx-lm (Apple-only) since the Spark
+# serves the model via Ollama's HTTP API. The review LLM engine is Ollama here.
+flask
+waitress
+pymupdf
+numpy
+pillow
+requests
+rapidocr-onnxruntime
+onnxruntime

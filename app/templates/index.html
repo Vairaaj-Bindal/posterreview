@@ -158,8 +158,8 @@ function render(d){
   // related work
   if(d.related_work && d.related_work.length){
     h+='<div class="card"><h2 style="margin-top:0">Related work ('+d.related_work.length+')</h2><ul class="plain">';
-    for(const p of d.related_work) h+='<li><a href="'+p.url+'" target="_blank">'+esc(p.title)+'</a> '
-      +'<span class="note">'+(p.year||'')+'</span></li>';
+    for(const p of d.related_work) h+='<li><a href="'+safeUrl(p.url)+'" target="_blank" rel="noopener noreferrer">'+esc(p.title)+'</a> '
+      +'<span class="note">'+esc(String(p.year||''))+'</span></li>';
     h+='</ul></div>';
   }
   out.innerHTML=h;
@@ -171,7 +171,8 @@ function list(title, items, mark){
   for(const i of items) h+='<li>'+mark+' '+esc(i)+'</li>';
   return h+'</ul></div>';
 }
-function esc(s){ return (s||'').replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function esc(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function safeUrl(u){ try{ const p=new URL(u); return (p.protocol==='http:'||p.protocol==='https:')?u:'#'; }catch{ return '#'; } }
 </script>
 </body>
 </html>
