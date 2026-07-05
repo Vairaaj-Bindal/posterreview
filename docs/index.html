@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PosterReview — an agentic reviewer for research posters</title>
+<meta name="description" content="A zero-cost, locally-run reviewer for scientific posters: deterministic design metrics + retrieval-grounded content review.">
+<style>
+  :root{--bg:#f7f6f3;--card:#fff;--ink:#1b1b1a;--mut:#6c6a64;--line:#e7e3db;
+        --accent:#2f6f4f;--bad:#c0392b;--mid:#c9902a;--good:#2f8f5b;--code:#f0eee8;}
+  @media (prefers-color-scheme:dark){:root{--bg:#141517;--card:#1e2023;--ink:#eceae6;
+        --mut:#9a978f;--line:#2b2e33;--code:#22242820;--code:#24262a;}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:17px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+  .wrap{max-width:760px;margin:0 auto;padding:0 22px}
+  header{padding:72px 0 40px;border-bottom:1px solid var(--line)}
+  .kicker{color:var(--accent);font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:13px}
+  h1{font-size:44px;line-height:1.05;letter-spacing:-.025em;margin:10px 0 14px}
+  .lede{font-size:20px;color:var(--mut);margin:0 0 22px}
+  .tags{display:flex;gap:8px;flex-wrap:wrap}
+  .tag{font-size:13px;color:var(--mut);border:1px solid var(--line);border-radius:20px;padding:4px 12px}
+  h2{font-size:15px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);
+     margin:46px 0 6px;padding-top:8px}
+  h3{font-size:20px;margin:26px 0 4px;letter-spacing:-.01em}
+  p{margin:10px 0}
+  a{color:var(--accent)}
+  section{padding:6px 0}
+  .steps{list-style:none;padding:0;margin:14px 0;counter-reset:s}
+  .steps li{position:relative;padding:12px 0 12px 44px;border-top:1px solid var(--line);counter-increment:s}
+  .steps li:before{content:counter(s);position:absolute;left:0;top:11px;width:28px;height:28px;
+     background:var(--accent);color:#fff;border-radius:50%;display:grid;place-items:center;font-size:14px;font-weight:700}
+  .steps b{display:block}
+  .steps span{color:var(--mut);font-size:15px}
+  .callout{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--accent);
+     border-radius:10px;padding:16px 18px;margin:18px 0}
+  code,pre{background:var(--code);border-radius:8px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px}
+  code{padding:1px 6px}
+  pre{padding:14px 16px;overflow-x:auto;margin:12px 0}
+  table{border-collapse:collapse;width:100%;margin:14px 0;font-size:15px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+  th{color:var(--mut);font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:.04em}
+  .num{font-variant-numeric:tabular-nums}
+  footer{color:var(--mut);font-size:14px;border-top:1px solid var(--line);margin-top:56px;padding:26px 0 60px}
+  .disc{color:var(--mut);font-size:14px;font-style:italic}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="kicker">PosterReview</div>
+  <h1>An agentic reviewer for research posters.</h1>
+  <p class="lede">Upload a poster, get a design score and evidence-based feedback —
+     grounded in what the poster actually measures, and run entirely on local
+     compute at no cost.</p>
+  <div class="tags">
+    <span class="tag">Zero API cost</span>
+    <span class="tag">Runs locally / on-device</span>
+    <span class="tag">Deterministic design metrics</span>
+    <span class="tag">Retrieval-grounded</span>
+  </div>
+</header>
+
+<section>
+  <h2>What it does</h2>
+  <p>Peer review is slow; poster feedback is even scarcer — most authors get none
+     until they're standing at the board. PosterReview gives a poster a fast,
+     structured review: a measured <b>design score</b> and specific,
+     research-aware <b>content feedback</b>, so an author can improve the poster
+     before it's printed.</p>
+  <p>It's modeled on the spirit of Stanford's
+     <a href="https://paperreview.ai" target="_blank" rel="noopener">agentic paper reviewer</a>,
+     but built for the poster medium — which changes both what's possible and what's
+     honest to claim (see <a href="#evaluation">the evaluation</a>).</p>
+</section>
+
+<section>
+  <h2>How it works</h2>
+  <ol class="steps">
+    <li><b>Parse &amp; measure</b><span>The poster PDF is parsed to exact design
+        metrics — font sizes, WCAG contrast, text coverage, column structure,
+        palette — read directly from the file's vector data (or via OCR for
+        flattened posters). These are <em>measurements</em>, not guesses.</span></li>
+    <li><b>Ground in prior work</b><span>Salient claims become search queries
+        against the free arXiv API; related papers are retrieved to judge novelty
+        and contextualization.</span></li>
+    <li><b>Review</b><span>A local open model reads the poster's text, the measured
+        design facts, and the retrieved related work, and writes a structured
+        review across research-content dimensions.</span></li>
+    <li><b>Score the design</b><span>A transparent, interpretable rubric turns the
+        measured metrics into a 0–100 design score — validated separately (below).</span></li>
+  </ol>
+  <div class="callout"><b>The moat:</b> because the design facts are measured
+     deterministically, the review can cite them by number ("body text is 32pt,
+     above the 24pt legibility floor; contrast 16:1") instead of a vision model
+     guessing. A paper reviewer can't do this — papers aren't visual.</div>
+</section>
+
+<section id="evaluation">
+  <h2>Method &amp; evaluation — the honest version</h2>
+
+  <h3>The design score is validated</h3>
+  <p>With no labelled "good poster" dataset to train on, the design score is a
+     transparent rubric, and it's tested the way you test any label-free metric:
+     <b>controlled degradation</b>. Real posters are perturbed in known-bad
+     directions, the metrics are re-measured from the perturbed pixels, and the
+     score must drop. It does, reliably:</p>
+  <table>
+    <tr><th>Degradation</th><th>Score dropped</th></tr>
+    <tr><td>Reduce contrast</td><td class="num">83%</td></tr>
+    <tr><td>Clutter the palette</td><td class="num">83%</td></tr>
+    <tr><td>Blur the poster</td><td class="num">100%</td></tr>
+  </table>
+
+  <h3>What it does <em>not</em> claim: an acceptance oracle</h3>
+  <p>The obvious ambition — predict a reviewer's score from the poster — turns out
+     to be structurally impossible, and PosterReview says so rather than faking a
+     number. We linked 293 real ICLR posters to their OpenReview reviewer ratings
+     and tested two predictors:</p>
+  <table>
+    <tr><th>Predictor → reviewer rating</th><th>Correlation</th></tr>
+    <tr><td>Measured design metrics</td><td class="num">≈ 0.00</td></tr>
+    <tr><td>LLM-judged content scores</td><td class="num">−0.04</td></tr>
+  </table>
+  <p>Both are null, for one reason: <b>posters only exist for accepted papers.</b>
+     A rejected paper never gets a poster, so any poster corpus is ~96% accepted —
+     there is no negative class to learn from, and the leftover
+     poster-vs-spotlight-vs-oral gradation is a band even two human reviewers barely
+     separate (their agreement is 0.41, <em>with the full paper in hand</em>).
+     Stanford's paper-scoring result doesn't transfer, because papers have rejects
+     and posters don't.</p>
+  <div class="callout">So PosterReview reports a <b>design score</b> and a
+     <b>content review</b> as signals for <em>improving</em> a poster — not as a
+     prediction of whether it will be accepted. That's the defensible claim, and
+     it's the one that's actually useful to an author.</div>
+</section>
+
+<section>
+  <h2>Zero cost, on your own compute</h2>
+  <p>Every stage runs locally. The measurement, retrieval, and design score are
+     pure computation. The review runs on an open model via one of two
+     interchangeable engines:</p>
+  <ul>
+    <li><b>MLX</b> — a compact model on Apple Silicon, for laptops.</li>
+    <li><b>Ollama</b> — a 70B-class model on a workstation/GPU box (e.g. an NVIDIA
+        DGX Spark), reached over an encrypted SSH tunnel, for near-frontier quality.</li>
+  </ul>
+  <p>No API keys, no metered services, no data leaving your machines.</p>
+</section>
+
+<section>
+  <h2>Run it</h2>
+  <pre>git clone &lt;this repo&gt; &amp;&amp; cd posterreview
+uv venv .venv &amp;&amp; uv pip install -r research/requirements.txt
+.venv/bin/python app/app.py          # web UI at http://127.0.0.1:5000
+# or a single poster from the CLI:
+.venv/bin/python research/scripts/review.py path/to/poster.pdf</pre>
+</section>
+
+<footer>
+  <p class="disc">Reviews are generated automatically and may contain errors —
+     use them as guidance and apply your own judgment.</p>
+  <p>PosterReview · built by Vairaaj Bindal.</p>
+</footer>
+</div>
+</body>
+</html>
