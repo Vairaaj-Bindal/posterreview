@@ -70,6 +70,20 @@ app/          # (later) web app
   poster-native ground truth (P2PEval / Paper2Poster rubrics). Corrected
   architecture in `docs/phase4_scoring_head.md`.
 
+### The scoring-head ambition, retired on evidence (Phase 4 + 4b)
+
+Two honest null results converged on a structural truth: **you can't predict paper
+acceptance from a poster.** Design metrics don't predict the reviewer rating
+(Phase 4: Spearman ≈ 0), and neither do LLM-judged content scores (Phase 4b:
+Spearman −0.04, high-tier AUC 0.44). The reason: **posters only exist for accepted
+papers**, so a poster corpus is ~96% accepted — there's no negative class to learn
+from, and the within-accepted gradation (poster/spotlight/oral) is a band even two
+humans barely separate. Stanford's paper-scoring result (0.42) doesn't transfer,
+because papers have rejects and posters don't. So PosterReview reports a **design
+score** (measured, validated) and a **content review + provisional score** (useful
+feedback) — quality signals for *improving* a poster, not an acceptance oracle.
+Full write-up: `docs/phase4b_content_eval.md`.
+
 ### Scoring-head target, corrected (Phase 4)
 
 | Dimension type | Ground truth |
